@@ -6,7 +6,6 @@ import pandas as pd
 import tensorflow as tf
 from tensorflow import keras
 from keras.models import load_model
-import argparse
 
 muscle_row_count = 24
 
@@ -28,13 +27,9 @@ def print_(msg):
     pre = "Python >> "
     print('%s %s'%(pre,msg.replace('\n','\n'+pre)))
 
-model_name = 'FF_06x600x06-05'
-
-# parser = argparse.ArgumentParser()
-# parser.add_argument('--model', '-m', type= str)
-# args=parser.parse_args()
-
-# model_name = args.model
+model_name = 'FF_07x100x07-40'
+update_rate = 10
+scratch_directory = '/net/stzs3/export/scratch2'
 
 """
 
@@ -151,10 +146,12 @@ class MuscleSimulation():
 
 """
 # New Code
-# parallel_waves Motion Data into Information about Angles
-def parallel_waves(step = 0,
+# Compute Angles from Motion Data
+def compute_angles(step = 0,
                     Positions = 95):
-        motion_df = pd.read_csv('/clusterhome/chaudhry/experiments/results/set7/{}/buffers/worm_motion_log.txt'.format(model_name), delim_whitespace=True, header=None)
+        # Use scratch directory to store files.
+        motion_df = pd.read_csv('{}/chaudhry/set12/{}/buffers/worm_motion_log.txt'.format(scratch_directory, model_name), delim_whitespace=True, header=None)
+        
         motion_df.drop(motion_df.columns[201:301], axis=1, inplace=True)
         motion = motion_df.values[-1]
 
@@ -177,17 +174,14 @@ def parallel_waves(step = 0,
             else:
                 angles[pos] = - (1 - c_Ang)
         
-        angles = angles
+        angles = 10 * angles
+
         return angles
 
-# Load in Artificial Network
+# Load in Artificial Neural Network
 
-# with open('/clusterhome/chaudhry/experiments/models/set3/architectures/{}-{}.json'.format(model_name), 'r') as f:
-#     network = model_from_json(f.read())
-# network.load_weights('/clusterhome/chaudhry/experiments/models/set3/weights/{}-{}.h5'.format(model_name))
-
-network = tf.keras.models.load_model('/clusterhome/chaudhry/experiments/models/set7/{}'.format(model_name), compile=False)
-network.compile(optimizer='adam', loss='mean_squared_error')
+neural_network = tf.keras.models.load_model('/clusterhome/chaudhry/experiments/models/set12/{}'.format(model_name), compile=False)
+neural_network.compile(optimizer='adam', loss='mean_squared_error')
 
 print "Model Loaded and Compiled Network from Disk"
 
@@ -202,21 +196,19 @@ class MuscleSimulation():
 
     def run(self, skip_to_time=0, do_plot = True):
         if (self.step < 500):
+            # Feed in muscle activation patterns to initialize the worm's posture.
             self.contraction_array = muscle_initialization[int(self.step)]
             self.step += self.increment
-            # print "Muscle Activation Values"
-            # print list(self.contraction_array)[0:10]  
             return list(self.contraction_array)
         else:
-            angles =  parallel_waves(step = self.step)
+            # Update the muscle activation patterns every N steps.
+            if self.step % update_rate == 0:
+                angles =  compute_angles(step = self.step)
+                self.contraction_array = neural_network.predict([[angles]])[0]
+                
             self.step += self.increment
-            self.contraction_array = network.predict([[angles]])[0]
-            # print "Angles"
-            # print angles[0:10]
-            # print "________"
-            # print "Muscle Activation Values"
-            # print list(self.contraction_array)[0:10]    
             return list(self.contraction_array)    
+
 
     def save_results(self):
         
